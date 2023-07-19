@@ -1,0 +1,62 @@
+version: '2'
+networks:
+  bridge:
+    driver: bridge
+services:
+  web:
+    image: "gridexx/xwiki:lts-postgres-tomcat"
+    container_name: xwiki-web
+    depends_on:
+      - db
+      - index
+    ports:
+      - "8080:8080"
+    environment:
+      - XWIKI_VERSION=xwiki
+      - DB_USER=xwiki
+      - DB_PASSWORD=xwiki
+      - DB_DATABASE=xwiki
+      - DB_HOST=xwiki-db
+      - INDEX_HOST=xwiki-index
+    volumes:
+      - xwiki-data:/usr/local/xwiki
+    networks:
+      - bridge
+
+  db:
+    container_name: xwiki-db
+    image: postgres:9.5
+    environment:
+      POSTGRES_ROOT_PASSWORD: xwiki
+      POSTGRES_USER: xwiki
+      POSTGRES_PASSWORD: xwiki
+      POSTGRES_DB: xwiki
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    networks:
+      - bridge
+
+  index:
+    image: "solr:8"
+    ports:
+      - 8983:8983
+    container_name: xwiki-index
+    volumes:
+      # - ./solr:/docker-entrypoint-initdb.d
+      - $PWD/config/solr:/opt/solr/server/solr/xwiki
+      - $PWD/config/solr:/opt/solr/server/solr/xwiki_events
+      - $PWD/config/solr:/opt/solr/server/solr/xwiki_extension_index
+      - $PWD/config/solr:/opt/solr/server/solr/xwiki_ratings
+    entrypoint: bash 
+    command: |
+      -c '
+      precreate-core xwiki;
+      precreate-core xwiki_events;
+      precreate-core xwiki_extension_index;
+      precreate-core xwiki_ratings;
+      exec solr -f'
+    networks:
+      - bridge
+volumes:
+  mysql-data: {}
+  xwiki-data: {}
+  # solr-data: {}
