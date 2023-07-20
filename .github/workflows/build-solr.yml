@@ -1,0 +1,114 @@
+name: Build and Push Solr Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'solr@v?[0-9]+.[0-9]+.[0-9]+'
+
+  workflow_dispatch:
+
+env:
+  SOLR_SERVER_CORE_URL: https://maven.xwiki.org/releases/org/xwiki/platform/xwiki-platform-search-solr-server-core/15.5/xwiki-platform-search-solr-server-core-15.5.jar
+  SOLR_CORE_MINIMAL_URL: https://maven.xwiki.org/releases/org/xwiki/platform/xwiki-platform-search-solr-server-core-minimal/15.5/xwiki-platform-search-solr-server-core-minimal-15.5.zip
+  ARCHIVE_PATH: solr/config/solr
+
+jobs:
+  build_push:
+    
+    name: Build and push Solr Docker image
+    runs-on: ubuntu-latest     
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+            fetch-depth: 0
+            sparse-checkout: |
+              solr
+
+      - name: Download server core file
+        uses: carlosperate/download-file-action@v2
+        id: download-server-core
+        with:
+          file-url: ${{ env.SOLR_SERVER_CORE_URL }}
+          file-name: xwiki-server-core.zip
+          location: ${{env.ARCHIVE_PATH}}
+
+      - name: Download minimal core file
+        uses: carlosperate/download-file-action@v2
+        id: download-minimal-core
+        with:
+          file-url: ${{ env.SOLR_CORE_MINIMAL_URL }}
+          file-name: xwiki-minimal-core.zip
+          location: .
+
+      - name: Print the file path of the files
+        run: |
+          echo "The server core file was downloaded to ${{ steps.download-server-core.outputs.file-path }}"
+          echo "The minimal core file was downloaded to ${{ steps.download-minimal-core.outputs.file-path }}"
+
+      - name: Decompress the server core into xwiki folder
+        uses: montudor/action-zip@v1      
+        with:
+            args: unzip -qq ./${{env.ARCHIVE_PATH}}/xwiki-server-core.zip -d ./${{ env.ARCHIVE_PATH }}/xwiki
+      
+      - name: Decompress minimal core into events folder
+        uses:  montudor/action-zip@v1
+        with:
+            args: unzip -qq ./xwiki-minimal-core.zip -d ./${{ env.ARCHIVE_PATH }}/xwiki_events
+
+      - name: Decompress minimal core into extension_index folder
+        uses:  montudor/action-zip@v1
+        with:
+            args: unzip -qq ./xwiki-minimal-core.zip -d ./${{ env.ARCHIVE_PATH }}/extension_index
+
+      - name: Decompress minimal core into rating folder
+        uses:  montudor/action-zip@v1
+        with:
+            args: unzip -qq ./xwiki-minimal-core.zip -d ./${{ env.ARCHIVE_PATH }}/rating
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+                
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      -
+        name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - 
+        name: Extract version tag from github.ref_name
+        id: extract_version
+        run: |
+          if [[ "${{ github.ref_name }}" =~ solr@v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "::set-output name=version_tag::${BASH_REMATCH[1]}"
+          else
+            echo "Invalid version tag format. Skipping image push."
+            exit 1
+          fi
+        
+
+      - name: Build and push images
+        uses: docker/build-push-action@v4
+        with:
+          context: ./solr
+          file: ./solr/Dockerfile
+          push: true
+          tags: 
+            ${{ secrets.DOCKERHUB_USERNAME }}/solr:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/solr:${{ steps.extract_version.outputs.version_tag  }}
+            gcr.io/${{ github.repository_owner }}/solr:latest
+            gcr.io/${{ github.repository_owner }}/solr:${{ steps.extract_version.outputs.version_tag }}
