@@ -1,0 +1,13 @@
+name: Test mkdir
+
+on:
+  push:
+
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: test
+      run: |
+        mkdir tesm
