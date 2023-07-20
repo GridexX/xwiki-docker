@@ -2,8 +2,6 @@ name: Build and Push Solr Docker Image
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'solr@v?[0-9]+.[0-9]+.[0-9]+'
 
@@ -26,6 +24,16 @@ jobs:
             fetch-depth: 0
             sparse-checkout: |
               solr
+
+      - name: Extract version tag from github.ref_name
+        id: extract_version
+        run: |
+          if [[ "${{ github.ref_name }}" =~ solr@v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "VERSION_TAG=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+          else
+            echo "Invalid version tag format. Skipping image push."
+            exit 1
+          fi
 
       - name: Download server core file
         uses: carlosperate/download-file-action@v2
@@ -87,19 +95,11 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}   
 
-      - 
-        name: Extract version tag from github.ref_name
-        id: extract_version
+      - name: Lowercase the repository owner username
         run: |
-          if [[ "${{ github.ref_name }}" =~ solr@v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            echo "::set-output name=version_tag::${BASH_REMATCH[1]}"
-          else
-            echo "Invalid version tag format. Skipping image push."
-            exit 1
-          fi
-        
+          echo REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]') >> "$GITHUB_ENV"   
 
       - name: Build and push images
         uses: docker/build-push-action@v4
@@ -107,8 +107,8 @@ jobs:
           context: ./solr
           file: ./solr/Dockerfile
           push: true
-          tags: 
+          tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/solr:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/solr:${{ steps.extract_version.outputs.version_tag  }}
-            gcr.io/${{ github.repository_owner }}/solr:latest
-            gcr.io/${{ github.repository_owner }}/solr:${{ steps.extract_version.outputs.version_tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/solr:${{ env.VERSION_TAG  }}
+            ghcr.io/${{ env.REPO_OWNER }}/solr:latest
+            ghcr.io/${{ env.REPO_OWNER }}/solr:${{ env.VERSION_TAG  }}
