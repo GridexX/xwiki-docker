@@ -12,29 +12,40 @@ As an application wiki, XWiki allows for the storing of structured data and the 
 
 <!-- generated with pandoc -f gfm --toc -o readme-toc.md README.md -->
 
+- [What is XWiki](#what-is-xwiki)
+- [Table of contents](#table-of-contents)
 - [Introduction](#introduction)
 - [How to use this image](#how-to-use-this-image)
-    -	[Pulling existing image](#pulling-an-existing-image)
-        -	[Using docker run](#using-docker-run)
-        -	[Using docker-compose](#using-docker-compose)
-        -	[Using Docker Swarm](#using-docker-swarm)
-    -	[Using an external Solr service](#using-an-external-solr-service)
-        -	[Preparing Solr container](#preparing-solr-container)
-        -	[Docker run example](#docker-run-example)
-        -	[Docker Compose example](#docker-compose-example)
-    -	[Configuring Tomcat](#configuring-tomcat)
-    -	[Building](#building)
+  - [Pulling an existing image](#pulling-an-existing-image)
+    - [Using docker run](#using-docker-run)
+      - [Starting MySQL](#starting-mysql)
+      - [Starting MariaDB](#starting-mariadb)
+      - [Starting PostgreSQL](#starting-postgresql)
+      - [Starting XWiki](#starting-xwiki)
+    - [Using docker-compose](#using-docker-compose)
+      - [For MySQL on Tomcat](#for-mysql-on-tomcat)
+      - [For MariaDB on Tomcat](#for-mariadb-on-tomcat)
+      - [For PostgreSQL on Tomcat](#for-postgresql-on-tomcat)
+    - [Using Docker Swarm](#using-docker-swarm)
+      - [MySQL Example](#mysql-example)
+      - [PostgreSQL Example](#postgresql-example)
+  - [Using an external Solr service](#using-an-external-solr-service)
+      - [Docker run example](#docker-run-example)
+      - [Docker Compose example](#docker-compose-example)
+  - [Configuring Tomcat](#configuring-tomcat)
+  - [Building](#building)
 - [Upgrading XWiki](#upgrading-xwiki)
-- [Troubleshooting](#troubleshooting)
 - [Details for the xwiki image](#details-for-the-xwiki-image)
-    -	[Configuration Options](#configuration-options)
-    -	[Passing JVM options](#passing-jvm-options)
-    -	[Configuration Files](#configuration-files)
-    -	[Miscellaneous](#miscellaneous)
+  - [Configuration Options](#configuration-options)
+  - [Passing JVM options](#passing-jvm-options)
+  - [Configuration Files](#configuration-files)
+  - [Miscellaneous](#miscellaneous)
+- [Troubleshooting](#troubleshooting)
+  - [Problem with eclipse-temurin base image](#problem-with-eclipse-temurin-base-image)
 - [For Maintainers](#for-maintainers)
-    -	[Update Docker Images](#update-docker-images)
-    -	[Testing Docker Images](#testing-docker-images)
-    -	[Clean Up](#clean-up)
+  - [Update Docker Images](#update-docker-images)
+  - [Testing Docker Images](#testing-docker-images)
+    - [Clean Up](#clean-up)
 - [License](#license)
 - [Support](#support)
 - [Contribute](#contribute)
@@ -484,31 +495,17 @@ This image provides the configuration parameters `INDEX_HOST` and `INDEX_PORT` w
 solr.type=remote
 solr.remote.baseURL=http://$INDEX_HOST:$INDEX_PORT/solr
 ```
-
-#### Preparing Solr container
-
-The simplest way to create an external Solr service is using the [official Solr image](https://hub.docker.com/_/solr/).
-
--	Select the appropriate XWiki Solr configuration JAR from [here](https://maven.xwiki.org/releases/org/xwiki/platform/xwiki-platform-search-solr-server-data/) (Note: it's usually better to synchronize it with your version of XWiki)
--	Place this JAR in a directory along side `solr-init.sh` that you can fetch from the [docker-xwiki repository](https://github.com/xwiki-contrib/docker-xwiki/tree/master/contrib/solr)
--	Ensure that this directory is owned by the Solr user and group `chown -R 8983:8983 /path/to/solr/init/directory`
--	Launch the Solr container and mount this directory at `/docker-entrypoint-initdb.d`
--	This will execute `solr-init.sh` on container startup and prepare the XWiki core with the contents from the given JAR
--	If you want to persist the Solr index outside of the container with a bind mount, make sure that that directory is owned by the Solr user and group `chown 8983:8983 /my/path/solr`
-
 #### Docker run example
 
 Start your chosen database container normally using the docker run command above, this example happens to assume MySQL was chosen.
 
-The command below will configure the Solr container to initialize based on the contents of `/path/to/solr/init/directory/` and save its data on the host in a `/my/path/solr` directory:
+You can run the Solr instance for XWiki using the existing docker image `xwiki:solr`
 
 ```console
 docker run \
   --net=xwiki-nw \
   --name solr-xwiki \
-  -v /path/to/solr/init/directory:/docker-entrypoint-initdb.d \
-  -v /my/path/solr:/opt/solr/server/solr/xwiki \
-  -d solr:8
+  -d xwiki/solr:latest
 ```
 
 Then start the XWiki container, the below command is nearly identical to that specified in the Starting XWiki section above, except that it includes the `-e INDEX_HOST=` environment variable which specifies the hostname of the Solr container.
@@ -528,8 +525,6 @@ docker run \
 ```
 
 #### Docker Compose example
-
-The below compose file assumes that `./solr` contains `solr-init.sh` and the configuration JAR file.
 
 ```yaml
 version: '2'
@@ -573,7 +568,6 @@ services:
     image: "solr:8"
     container_name: xwiki-index
     volumes:
-      - ./solr:/docker-entrypoint-initdb.d
       - solr-data:/opt/solr/server/solr
     networks:
       - bridge
